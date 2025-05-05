@@ -4,14 +4,18 @@ import bcrypt
 import smtplib
 from email.mime.text import MIMEText
 import io
-
-# --- Background Styling ---
 import base64
 
+# --- Constants ---
+SENDER_EMAIL = "yourcompany@example.com"  # change this
+EMAIL_PASSWORD = "your-app-password"      # change this
+USER_CSV = "users.csv"
+VEHICLE_CSV = "vehicle_trip_data_synced.csv"
+
+# --- Custom Background ---
 def apply_custom_background_local(image_path: str):
     with open(image_path, "rb") as img_file:
         encoded = base64.b64encode(img_file.read()).decode()
-
     st.markdown(f"""
         <style>
         .stApp {{
@@ -35,22 +39,13 @@ def apply_custom_background_local(image_path: str):
         </style>
     """, unsafe_allow_html=True)
 
-
-
-# --- Constants ---
-SENDER_EMAIL = "yourcompany@example.com"
-EMAIL_PASSWORD = "your-app-password"
-USER_CSV = "users.csv"
-VEHICLE_CSV = "vehicle_trip_data_synced.csv"
-
-# --- Check Dependencies ---
+# --- Load CSVs ---
 try:
     import openpyxl
 except ImportError:
-    st.error("❌ Required package 'openpyxl' is not installed. Run `pip install openpyxl`.")
+    st.error("❌ 'openpyxl' is required. Run: pip install openpyxl")
     st.stop()
 
-# --- Load Data ---
 try:
     users = pd.read_csv(USER_CSV)
 except FileNotFoundError:
@@ -61,12 +56,12 @@ def load_vehicles():
     try:
         return pd.read_csv(VEHICLE_CSV)
     except FileNotFoundError:
-        st.error(f"Vehicle data file not found at {VEHICLE_CSV}")
+        st.error("🚫 Vehicle data file not found.")
         st.stop()
 
 vehicles = load_vehicles()
 
-# --- Utilities ---
+# --- Utility Functions ---
 def save_users():
     users.to_csv(USER_CSV, index=False)
 
@@ -86,14 +81,13 @@ def send_reset_email(to_email, username, temp_password):
         server.login(SENDER_EMAIL, EMAIL_PASSWORD)
         server.send_message(msg)
 
-# --- Session ---
+# --- Session Management ---
 if "page" not in st.session_state:
     st.session_state.page = "login"
-
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# --- Page 1: Login ---
+# --- Login Page ---
 if st.session_state.page == "login":
     apply_custom_background_local("page1.jpg")
     st.title("🔐 Login")
@@ -105,12 +99,80 @@ if st.session_state.page == "login":
         if not user.empty and check_password(password, user.iloc[0]["password"]):
             st.session_state.user = username
             st.session_state.page = "lookup"
-            st.success("Login successful!")
+            st.success("✅ Login successful!")
             st.stop()
         else:
-            st.error("Invalid username or password.")
+            st.error("❌ Invalid username or password.")
 
-# --- Page 2: Vehicle Lookup ---
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Create Account"):
+            st.session_state.page = "signup"
+            st.stop()
+    with col2:
+        if st.button("Forgot Password"):
+            st.session_state.page = "reset_password"
+            st.stop()
+
+# --- Sign Up Page ---
+elif st.session_state.page == "signup":
+    apply_custom_background_local("page1.jpg")
+    st.title("📝 Create Account")
+
+    name = st.text_input("Full Name")
+    username = st.text_input("Username")
+    email = st.text_input("Email")
+    password = st.text_input("Create Password", type="password")
+    confirm_password = st.text_input("Confirm Password", type="password")
+
+    if st.button("Register"):
+        if password != confirm_password:
+            st.error("Passwords do not match.")
+        elif username in users["username"].values:
+            st.error("Username already exists.")
+        elif email in users["email"].values:
+            st.error("Email already registered.")
+        else:
+            hashed_pw = hash_password(password)
+            new_user = pd.DataFrame([[username, name, email, hashed_pw]], columns=["username", "name", "email", "password"])
+            users = pd.concat([users, new_user], ignore_index=True)
+            save_users()
+            st.success("✅ Account created! Please login.")
+            st.session_state.page = "login"
+            st.stop()
+
+    if st.button("Back to Login"):
+        st.session_state.page = "login"
+        st.stop()
+
+# --- Forgot Password Page ---
+elif st.session_state.page == "reset_password":
+    apply_custom_background_local("page1.jpg")
+    st.title("🔑 Forgot Password")
+
+    email = st.text_input("Enter your registered email")
+    if st.button("Send Temporary Password"):
+        matched_user = users[users["email"] == email]
+        if not matched_user.empty:
+            username = matched_user.iloc[0]["username"]
+            temp_password = "Temp" + str(pd.Timestamp.now().second)
+            users.loc[users["email"] == email, "password"] = hash_password(temp_password)
+            save_users()
+            try:
+                send_reset_email(email, username, temp_password)
+                st.success("📧 Temporary password sent to your email.")
+                st.session_state.page = "login"
+                st.stop()
+            except Exception as e:
+                st.error(f"Error sending email: {e}")
+        else:
+            st.error("Email not found.")
+
+    if st.button("Back to Login"):
+        st.session_state.page = "login"
+        st.stop()
+
+# --- Vehicle Lookup Page ---
 elif st.session_state.page == "lookup":
     apply_custom_background_local("page2.jpg")
     st.title("🚗 Vehicle Lookup")
@@ -122,7 +184,6 @@ elif st.session_state.page == "lookup":
             st.session_state.page = "login"
             st.session_state.user = None
             st.stop()
-
     with col2:
         if st.button("Logout"):
             st.session_state.page = "login"
@@ -140,12 +201,11 @@ elif st.session_state.page == "lookup":
         st.success("✅ Vehicle data updated successfully!")
 
     if st.button("Search"):
-        vehicles = load_vehicles()  # Reload after upload
+        vehicles = load_vehicles()
         if vehicle_number_input.strip() == "":
             st.warning("Please enter a vehicle number.")
         else:
             matched = vehicles[vehicles['Vehicle Number'].astype(str).str.contains(vehicle_number_input.strip(), case=False, na=False)]
-
             if not matched.empty:
                 vehicle = matched.iloc[0]
                 st.markdown(f"""
@@ -167,7 +227,7 @@ elif st.session_state.page == "lookup":
         st.session_state.page = "edit"
         st.stop()
 
-# --- Page 3: Edit Vehicle Data ---
+# --- Edit Vehicle Page ---
 elif st.session_state.page == "edit":
     apply_custom_background_local("page3.jpg")
     st.title("🛠️ Edit Vehicle Data")
@@ -212,7 +272,7 @@ elif st.session_state.page == "edit":
         vehicles.update(edited_data)
         vehicles.to_csv(VEHICLE_CSV, index=False)
         st.session_state.original_vehicles = vehicles.copy()
-        st.success("All changes saved successfully!")
+        st.success("✅ All changes saved successfully!")
 
     if st.button("↩️ Undo Changes"):
         vehicles = st.session_state.original_vehicles.copy()
@@ -222,6 +282,7 @@ elif st.session_state.page == "edit":
     vehicles.to_excel(buffer, index=False, engine='openpyxl')
     buffer.seek(0)
     st.download_button("📥 Download Excel", data=buffer, file_name="vehicle_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 
 
