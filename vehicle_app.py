@@ -7,17 +7,23 @@ import io
 import base64
 
 # --- Constants ---
-SENDER_EMAIL = "yourcompany@example.com"  # change this
-EMAIL_PASSWORD = "your-app-password"      # change this
+SENDER_EMAIL = "yourcompany@example.com"
+EMAIL_PASSWORD = "your-app-password"
 USER_CSV = "users.csv"
 VEHICLE_CSV = "vehicle_trip_data_synced.csv"
 
-# --- Custom Background ---
+# --- Custom Background + Font ---
 def apply_custom_background_local(image_path: str):
     with open(image_path, "rb") as img_file:
         encoded = base64.b64encode(img_file.read()).decode()
     st.markdown(f"""
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        html, body, [class*="st-"] {{
+            font-family: 'Poppins', sans-serif;
+        }}
+
         .stApp {{
             background-image: url("data:image/jpg;base64,{encoded}");
             background-size: cover;
@@ -26,10 +32,12 @@ def apply_custom_background_local(image_path: str):
             background-position: center;
             color: black;
         }}
+
         .stTextInput > div > div > input {{
             background-color: #fce9d9;
-            color: White;
+            color: white;
         }}
+
         .stButton button {{
             background-color: #ed872d;
             color: white;
@@ -194,12 +202,6 @@ elif st.session_state.page == "lookup":
     st.markdown("### 🔍 Search Vehicle by Number")
     vehicle_number_input = st.text_input("Enter Vehicle Number")
 
-    uploaded_file = st.file_uploader("📤 Upload updated vehicle data (CSV)", type=["csv"])
-    if uploaded_file is not None:
-        vehicles = pd.read_csv(uploaded_file)
-        vehicles.to_csv(VEHICLE_CSV, index=False)
-        st.success("✅ Vehicle data updated successfully!")
-
     if st.button("Search"):
         vehicles = load_vehicles()
         if vehicle_number_input.strip() == "":
@@ -209,7 +211,7 @@ elif st.session_state.page == "lookup":
             if not matched.empty:
                 vehicle = matched.iloc[0]
                 st.markdown(f"""
-                <div style="background-color: #1e1e1e; padding: 1.5rem; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.4); color: white; font-family: 'Segoe UI'; width: 60%; margin: auto;">
+                <div style="background-color: #1e1e1e; padding: 1.5rem; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.4); color: white; font-family: 'Poppins'; width: 60%; margin: auto;">
                     <h3 style="color: #4FC3F7;">🚘 Vehicle Details</h3>
                     <hr style="border: 1px solid #444;">
                     <p><strong>Vehicle Number:</strong> {vehicle.get('Vehicle Number', 'N/A')}</p>
@@ -282,6 +284,7 @@ elif st.session_state.page == "edit":
     vehicles.to_excel(buffer, index=False, engine='openpyxl')
     buffer.seek(0)
     st.download_button("📥 Download Excel", data=buffer, file_name="vehicle_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 
 
